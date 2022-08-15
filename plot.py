@@ -49,6 +49,14 @@ class PlotLinesHandler:
         else:
             plt.plot((np.arange(data.shape[-1])+x_shift)*data_log_v, data,
                 linewidth=linewidth)
+    
+    def plot_scatter(self, x, y, marker, color, marker_hollow=False, size=45):
+        plt.figure(self.id)
+        if marker_hollow:
+            plt.scatter(x, y, marker=marker, color=color, s=size, facecolor='none')
+        else:
+            plt.scatter(x, y, marker=marker, color=color, s=size)
+
 
     def save_fig(self, legend=[], fn_prefix="", fn_suffix=""):
         if not os.path.exists(self.output_dir):

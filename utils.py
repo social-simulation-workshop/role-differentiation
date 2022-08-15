@@ -169,7 +169,7 @@ class Network:
             for ag in self.ags:
                 ag.interacting()
 
-            print("b, p = ({}, {}) | iter {} | fc {}".format(self.args.T, self.args.p, iter_idx, self.get_fc()))
+            print("b, p = ({:.2f}, {:.2f}) | iter {} | fc {}".format(self.args.T, self.args.p, iter_idx, self.get_fc()))
             # for ag_idx, ag in enumerate(self.ags):
             #     leader_idx = ag._get_leader_idx()
             #     leader_id = ag.neighborhood[leader_idx].id if leader_idx != len(ag.neighborhood) else ag.id
@@ -193,4 +193,16 @@ class Network:
     def get_fc(self) -> float:
        return self.coop_num / self.args.N
         
+    def get_avg_payoff_C_D(self):
+        c_payoff_sum, d_payoff_sum = 0, 0
+        for ag in self.ags:
+            if ag.strategy == Agent.COOPERATE:
+                c_payoff_sum += ag.payoff
+            elif ag.strategy == Agent.DEFECT:
+                d_payoff_sum += ag.payoff
+        return c_payoff_sum / self.coop_num, d_payoff_sum / (self.args.N - self.coop_num)
+    
+    def get_avg_payoff_diff(self):
+        c_avg_payoff, d_avg_payoff = self.get_avg_payoff_C_D()
+        return d_avg_payoff - c_avg_payoff
             
