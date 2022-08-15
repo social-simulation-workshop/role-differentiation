@@ -17,9 +17,9 @@ class ArgsConfig:
             help="")
         parser.add_argument("--coop_init_fraction", type=float, default=0.6,
             help="")
-        parser.add_argument("--n_iter", type=int, default=1000,
+        parser.add_argument("--n_iter", type=int, default=5,
             help="")
-        parser.add_argument("--n_replication", type=int, default=100,
+        parser.add_argument("--n_replication", type=int, default=1,
             help="")
         parser.add_argument("--random_seed", type=int, default=1025, 
             help="")

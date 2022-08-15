@@ -1,7 +1,6 @@
 import argparse
 import itertools
 import numpy as np
-from sklearn import neighbors
 
 
 def draw(p) -> bool:
@@ -68,7 +67,7 @@ class Agent:
             leader_ag = self.neighborhood[leader_idx]
             if self.strategy != leader_ag.strategy:
                 updated = True
-                network.coop_num -= self.strategy + leader_ag.strategy
+                network.coop_num += leader_ag.strategy - self.strategy
                 self.strategy = leader_ag.strategy
         return updated
     
@@ -116,20 +115,21 @@ class Agent:
 class Network:
     
     def __init__(self, args: argparse.ArgumentParser, random_seed):
+        Agent._ids = itertools.count(0)
         np.random.seed(random_seed)
         self.args = args
         print(args)
 
+        # network states
+        self.coop_num = None 
+
         self.ags = self.init_agents()
         self.ties = self.init_network()
-
-        # network states
-        self.coop_num = self.args.N * self.args.coop_init_fraction
     
     def init_agents(self) -> list:
         print("Initializing {} agents ...".format(self.args.N))
-        init_coop_num = int(self.args.N * self.args.coop_init_fraction)
-        init_strategy_distribution = [1]*init_coop_num + [0]*(self.args.N-init_coop_num)
+        self.coop_num = int(self.args.N * self.args.coop_init_fraction)
+        init_strategy_distribution = [1]*self.coop_num + [0]*(self.args.N - self.coop_num)
         np.random.shuffle(init_strategy_distribution)
         return [Agent(strat, self.args) for strat in init_strategy_distribution]
     
@@ -169,12 +169,12 @@ class Network:
             for ag in self.ags:
                 ag.interacting()
 
-            # print("iter {} | fc {}".format(iter_idx, self.get_fc()))
+            print("b, p = ({}, {}) | iter {} | fc {}".format(self.args.T, self.args.p, iter_idx, self.get_fc()))
             # for ag_idx, ag in enumerate(self.ags):
             #     leader_idx = ag._get_leader_idx()
             #     leader_id = ag.neighborhood[leader_idx].id if leader_idx != len(ag.neighborhood) else ag.id
             #     print("ag {} ({}) | payoff {:.1f} | leader {} | neighbor: {}".format(
-            #         ag_idx, ag.get_string_strategy(), ag.payoff, leader_id, ag.get_neighbor_id()))
+                    # ag_idx, ag.get_string_strategy(), ag.payoff, leader_id, ag.get_neighbor_id()))
             
             for ag in self.ags:
                 updated = ag.update_strategy(self) or updated
@@ -186,8 +186,11 @@ class Network:
 
             if not updated: # reach stationary point
                 break
+
+            if self.get_fc() == 0.0: # reach all-D trap
+                break
     
     def get_fc(self) -> float:
-       return self.coop_num / self.args.N 
+       return self.coop_num / self.args.N
         
             
