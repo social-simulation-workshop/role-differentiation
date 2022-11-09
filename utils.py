@@ -20,7 +20,7 @@ class Agent:
         self.args = args
 
         self.strategy = strategy
-        self.neighborhood = list()
+        self.neighborhood = list() # list of Agent object
         self.payoff = 0
     
     def _play_PD(self, ag_a, ag_b):
@@ -42,34 +42,34 @@ class Agent:
         for neighbor in self.neighborhood:
             self._play_PD(self, neighbor)
     
-    def find_neighbor(self, ag_id: int) -> int:
+    def _find_neighbor_idx(self, ag_id: int) -> int:
         return [nei.id for nei in self.neighborhood].index(ag_id)
         
     def remove_neighbor(self, ag_id: int) -> None:
-        self.neighborhood.pop(self.find_neighbor(ag_id))
+        self.neighborhood.pop(self._find_neighbor_idx(ag_id))
     
     def _get_leader_id(self) -> int:
         all_ag_payoff = [neighbor.payoff for neighbor in self.neighborhood] + [self.payoff]
         leader_idx = np.random.choice(np.argwhere(all_ag_payoff == np.max(all_ag_payoff)).flatten())
         return self.neighborhood[leader_idx].id if leader_idx != len(self.neighborhood) else self.id
 
-    def update_strategy(self, network) -> bool:
+    def update_strategy_neighborhood(self, network) -> bool:
         """
         Return True if the strategy is updated, False if not.
         """
         leader_id = self._get_leader_id()
-        leader_ag = self.neighborhood[leader_id]
 
         updated = False
-        if self.leader_id != self.id:
-            # imitate the neighbor the largest payoff
+        if leader_id != self.id:
+            leader_ag = self.neighborhood[self._find_neighbor_idx(leader_id)]
+            # update strategy 
             if self.strategy != leader_ag.strategy:
-                updated = updated or True
+                updated = True
                 network.coop_num += leader_ag.strategy - self.strategy
                 self.strategy = leader_ag.strategy
-            # update neighbor
+            # update neighborhood
             if self.strategy == Agent.DEFECT and draw(self.args.p):
-                updated = updated or True
+                updated = True
                 self._update_neighborhood(network, leader_ag)
         return updated
     
@@ -81,20 +81,18 @@ class Agent:
             return a
 
         # remove old tie
+        # handle the case where two defector are the leader in each other's neighborhood
         if Network.encode_tie(self.id, leader_ag.id) in network.ties:
             self.remove_neighbor(leader_ag.id)
             leader_ag.remove_neighbor(self.id)
             network.ties.remove(Network.encode_tie(self.id, leader_ag.id))
-
-        # # handle the case where two defector are the leader in each other's neighborhood
-        # if leader_ag.leader_id == self.id:
-        #     leader_ag.leader_id = None
-        # # print("remove tie {} <-> {}".format(self.id, leader_ag.id))
+            # print("remove tie {} <-> {}".format(self.id, leader_ag.id))
         
         # build new tie
         ag_b_id = get_new_tie()
+        ag_b = network.ags[ag_b_id]
         self.neighborhood.append(network.ags[ag_b_id])
-        network.ags[ag_b_id].neighborhood.append(self)
+        ag_b.neighborhood.append(self)
         network.ties.add(Network.encode_tie(self.id, ag_b_id))
         # print("add tie {} <-> {}".format(self.id, ag_b_id))
     
@@ -106,6 +104,9 @@ class Agent:
 
 
 class Network:
+    RUNNING = 0
+    STATIONARY_STATE = 1
+    ALL_D_STATE = 2
     
     def __init__(self, args: argparse.ArgumentParser, random_seed):
         Agent._ids = itertools.count(0)
@@ -118,6 +119,9 @@ class Network:
 
         self.ags = self.init_agents()
         self.ties = self.init_network()
+
+        self.final_state = Network.RUNNING 
+        self.fc_his = list()
     
     def init_agents(self) -> list:
         print("Initializing {} agents ...".format(self.args.N))
@@ -150,7 +154,8 @@ class Network:
             ties.add(self.encode_tie(ag_a_id, ag_b_id))
         return ties
     
-    def simulate(self) -> float:
+    def simulate(self) -> bool:
+        """ Return True if the model reaches the stationary state, False if not. """
         # print("init | fc {}".format(self.get_fc()))
         # for ag_idx, ag in enumerate(self.ags):
         #     print("ag {} ({}) | neighbor: {}".format(
@@ -161,30 +166,40 @@ class Network:
 
             for ag in self.ags:
                 ag.interacting()
+            
+            for ag in self.ags:
+                updated = ag.update_strategy_neighborhood(self) or updated
 
             print("b, p = ({:.2f}, {:.2f}) | iter {} | fc {}".format(self.args.T, self.args.p, iter_idx, self.get_fc()))
-            # for ag_idx, ag in enumerate(self.ags):
-            #     leader_idx = ag._get_leader_idx()
-            #     leader_id = ag.neighborhood[leader_idx].id if leader_idx != len(ag.neighborhood) else ag.id
-            #     print("ag {} ({}) | payoff {:.1f} | leader {} | neighbor: {}".format(
-                    # ag_idx, ag.get_string_strategy(), ag.payoff, leader_id, ag.get_neighbor_id()))
             
-            for ag in self.ags:
-                updated = ag.update_strategy(self) or updated
-            
-            for ag in self.ags:
-                updated = ag.update_neighborhood(self) or updated
-            
+            self.fc_his.append(self.get_fc())
+
             assert len(self.ties) == int(self.args.K * self.args.N / 2)
 
             if not updated: # reach stationary point
-                break
+                self.final_state = Network.STATIONARY_STATE
+                break 
 
-            if self.get_fc() == 0.0: # reach all-D trap
+            if self.fc_his[-1] == 0.0: # reach all-D trap
+                self.final_state = Network.STATIONARY_STATE if self.args.p == 0.0 else Network.ALL_D_STATE
                 break
+                
+        return True if self.final_state == Network.STATIONARY_STATE else False
+
+    def get_fc(self):
+        return self.coop_num / self.args.N
     
-    def get_fc(self) -> float:
-       return self.coop_num / self.args.N
+    def get_final_fc(self) -> float:
+        if self.final_state == Network.RUNNING:
+            return np.mean(self.fc_his[-100:])
+        else:
+            return self.fc_his[-1]
+    
+    def reach_stationary_state(self) -> bool:
+        return True if self.final_state == Network.STATIONARY_STATE else False
+    
+    def reach_all_d_state(self) -> bool:
+        return True if self.final_state == Network.ALL_D_STATE else False
         
     def get_avg_payoff_C_D(self):
         c_payoff_sum, d_payoff_sum = 0, 0

@@ -19,7 +19,7 @@ class ArgsConfig:
             help="")
         parser.add_argument("--n_iter", type=int, default=5,
             help="")
-        parser.add_argument("--n_replication", type=int, default=1,
+        parser.add_argument("--n_replication", type=int, default=2,
             help="")
         parser.add_argument("--random_seed", type=int, default=1025, 
             help="")
