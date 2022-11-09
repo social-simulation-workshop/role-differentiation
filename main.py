@@ -5,25 +5,24 @@ from args import ArgsConfig
 from utils import Network
 from plot import PlotBarHandlder, PlotLinesHandler
 
-FIG = 3
-
 def run_simulation_fc(log_list, args):
     net = Network(args, args.random_seed)
     net.simulate()
     if not net.reach_all_d_state():
         log_list.append([net.get_final_fc(), int(net.reach_stationary_state())])
 
-def run_simulation_avg_payoff_diff(log_data, args, param_p, param_b):
+def run_simulation_avg_payoff_diff(log_list, args):
     net = Network(args, args.random_seed)
     net.simulate()
-    log_data[param_p.index(args.p)][param_b.index(args.T)].append(net.get_avg_payoff_diff())
+    log_list.append(net.get_avg_payoff_diff())
 
 
 if __name__ == "__main__":
     parser = ArgsConfig()
     args = parser.get_args()
+    fn_suffix = "randSeed_{}_repli_{}_iter_{}".format(args.random_seed, args.n_replication, args.n_iter)
 
-    if FIG == 3:
+    if args.fig == 3:
         PARAM_P = [0.0, 0.01, 0.1, 1.0]
         PARAM_B = [1.2, 1.4, 1.6, 1.8]
 
@@ -55,7 +54,6 @@ if __name__ == "__main__":
         print(log_data)
 
         p_fcs = np.mean(np.array(log_data)[:, :, :, 0], axis=-1)
-        print(p_fcs)
         
         pbh = PlotBarHandlder(
             title=None,
@@ -69,7 +67,7 @@ if __name__ == "__main__":
         assert len(colors) == len(p_fcs) and len(p_fcs) == len(PARAM_P)
         for idx in range(len(colors)):
             pbh.plot_bar(p_fcs[idx], "p={}".format(PARAM_P[idx]), colors[idx])
-        pbh.save_fig(PARAM_B, fn_suffix="randSeed_{}_repli_{}".format(args.random_seed, args.n_replication))
+        pbh.save_fig(PARAM_B, fn_suffix=fn_suffix)
 
         p_reach = np.mean(np.array(log_data)[:, :, :, 1], axis=-1)
 
@@ -85,29 +83,28 @@ if __name__ == "__main__":
         assert len(colors) == len(p_reach) and len(p_reach) == len(PARAM_P)
         for idx in range(len(colors)):
             pbh_reach.plot_bar(p_reach[idx], "p={}".format(PARAM_P[idx]), colors[idx])
-        pbh_reach.save_fig(PARAM_B, fn_suffix="randSeed_{}_repli_{}".format(args.random_seed, args.n_replication))
+        pbh_reach.save_fig(PARAM_B, fn_suffix=fn_suffix)
              
-    if FIG == 4:
+    if args.fig == 4:
         PARAM_P = [0.0, 0.1]
         PARAM_B = [_ for _ in np.arange(1, 2, 0.05)]
 
-        log_data = [[] for _ in range(len(PARAM_P))]
-        for p_idx in range(len(PARAM_P)):
-            for b_idx in range(len(PARAM_B)):
+        args_list = list()
+        log_data = list()
+        for p_idx, p in enumerate(PARAM_P):
+            log_data.append(list())
+            for b_idx, b in enumerate(PARAM_B):
                 manager = multiprocessing.Manager()
                 log_list = manager.list()
                 log_data[p_idx].append(log_list)
 
-        args_list = list()
-        for p in PARAM_P:
-            for b in PARAM_B:
                 for rep_idx in range(args.n_replication):
                     args_tmp = parser.get_args()
                     args_tmp.p = p
                     args_tmp.T = b
                     args_tmp.random_seed = args.random_seed + rep_idx
-                    args_list.append([log_data, args_tmp, PARAM_P, PARAM_B])
-        
+                    args_list.append([log_list, args_tmp])
+
         n_cpus = multiprocessing.cpu_count()
         print("cpu count: {}".format(n_cpus))
         pool = multiprocessing.Pool(n_cpus+2)
@@ -132,4 +129,4 @@ if __name__ == "__main__":
         )
         plot_handler.plot_scatter(PARAM_B, p_diffs[0], (8, 2), "black")
         plot_handler.plot_scatter(PARAM_B, p_diffs[1], "s", "black", marker_hollow=True)
-        plot_handler.save_fig(fn_suffix="randSeed_{}_repli_{}".format(args.random_seed, args.n_replication))
+        plot_handler.save_fig(fn_suffix=fn_suffix)

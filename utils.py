@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import argparse
 import itertools
 import numpy as np
-
 
 def draw(p) -> bool:
     return True if np.random.uniform() < p else False
@@ -20,10 +21,10 @@ class Agent:
         self.args = args
 
         self.strategy = strategy
-        self.neighborhood = list() # list of Agent object
+        self.neighborhood = list() # list of Agent objects
         self.payoff = 0
     
-    def _play_PD(self, ag_a, ag_b):
+    def _play_PD(self, ag_a: Agent, ag_b: Agent):
         if ag_a.strategy == Agent.COOPERATE and ag_b.strategy == Agent.COOPERATE:
             ag_a.payoff += Agent.R
             ag_b.payoff += Agent.R
@@ -37,8 +38,10 @@ class Agent:
             ag_a.payoff += Agent.P
             ag_b.payoff += Agent.P
     
-    def interacting(self) -> None:
+    def reset_payoff(self) -> None:
         self.payoff = 0
+    
+    def interacting(self) -> None:
         for neighbor in self.neighborhood:
             self._play_PD(self, neighbor)
     
@@ -48,20 +51,14 @@ class Agent:
     def remove_neighbor(self, ag_id: int) -> None:
         self.neighborhood.pop(self._find_neighbor_idx(ag_id))
     
-    def _get_leader_id(self) -> int:
-        all_ag_payoff = [neighbor.payoff for neighbor in self.neighborhood] + [self.payoff]
-        leader_idx = np.random.choice(np.argwhere(all_ag_payoff == np.max(all_ag_payoff)).flatten())
-        return self.neighborhood[leader_idx].id if leader_idx != len(self.neighborhood) else self.id
-
-    def update_strategy_neighborhood(self, network) -> bool:
+    def update_strategy_neighborhood(self, network: Network) -> bool:
         """
         Return True if the strategy is updated, False if not.
         """
-        leader_id = self._get_leader_id()
-
         updated = False
-        if leader_id != self.id:
-            leader_ag = self.neighborhood[self._find_neighbor_idx(leader_id)]
+        all_ag_payoff = [neighbor.payoff for neighbor in self.neighborhood] + [self.payoff]
+        if np.max(all_ag_payoff) > self.payoff: # unsatisfied
+            leader_ag = self.neighborhood[np.random.choice(np.argwhere(all_ag_payoff == np.max(all_ag_payoff)).flatten())]
             # update strategy 
             if self.strategy != leader_ag.strategy:
                 updated = True
@@ -73,7 +70,7 @@ class Agent:
                 self._update_neighborhood(network, leader_ag)
         return updated
     
-    def _update_neighborhood(self, network, leader_ag) -> None:
+    def _update_neighborhood(self, network: Network, leader_ag: Agent) -> None:
         def get_new_tie() -> int:
             a = np.random.choice(self.args.N)
             while a == self.id or Network.encode_tie(a, self.id) in network.ties:
@@ -86,7 +83,6 @@ class Agent:
             self.remove_neighbor(leader_ag.id)
             leader_ag.remove_neighbor(self.id)
             network.ties.remove(Network.encode_tie(self.id, leader_ag.id))
-            # print("remove tie {} <-> {}".format(self.id, leader_ag.id))
         
         # build new tie
         ag_b_id = get_new_tie()
@@ -94,7 +90,6 @@ class Agent:
         self.neighborhood.append(network.ags[ag_b_id])
         ag_b.neighborhood.append(self)
         network.ties.add(Network.encode_tie(self.id, ag_b_id))
-        # print("add tie {} <-> {}".format(self.id, ag_b_id))
     
     def get_string_strategy(self) -> str:
         return "C" if self.strategy == Agent.COOPERATE else "D"
@@ -118,7 +113,7 @@ class Network:
         self.coop_num = None 
 
         self.ags = self.init_agents()
-        self.ties = self.init_network()
+        self.ties = self.init_network() # a set of encoded strings consisting of two agents' id
 
         self.final_state = Network.RUNNING 
         self.fc_his = list()
@@ -126,7 +121,7 @@ class Network:
     def init_agents(self) -> list:
         print("Initializing {} agents ...".format(self.args.N))
         self.coop_num = int(self.args.N * self.args.coop_init_fraction)
-        init_strategy_distribution = [1]*self.coop_num + [0]*(self.args.N - self.coop_num)
+        init_strategy_distribution = [Agent.COOPERATE]*self.coop_num + [Agent.DEFECT]*(self.args.N - self.coop_num)
         np.random.shuffle(init_strategy_distribution)
         return [Agent(strat, self.args) for strat in init_strategy_distribution]
     
@@ -163,6 +158,9 @@ class Network:
         
         for iter_idx in range(self.args.n_iter):
             updated = False
+
+            for ag in self.ags:
+                ag.reset_payoff()
 
             for ag in self.ags:
                 ag.interacting()
