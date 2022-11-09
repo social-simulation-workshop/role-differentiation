@@ -22,7 +22,6 @@ class Agent:
         self.strategy = strategy
         self.neighborhood = list()
         self.payoff = 0
-        self.leader_id = None
     
     def _play_PD(self, ag_a, ag_b):
         if ag_a.strategy == Agent.COOPERATE and ag_b.strategy == Agent.COOPERATE:
@@ -49,61 +48,55 @@ class Agent:
     def remove_neighbor(self, ag_id: int) -> None:
         self.neighborhood.pop(self.find_neighbor(ag_id))
     
-    def _get_leader_idx(self) -> int:
+    def _get_leader_id(self) -> int:
         all_ag_payoff = [neighbor.payoff for neighbor in self.neighborhood] + [self.payoff]
-        max_payoff = np.max(all_ag_payoff)
-        candidates_idx = np.argwhere(all_ag_payoff == max_payoff).flatten()
-        return np.random.choice(candidates_idx)
+        leader_idx = np.random.choice(np.argwhere(all_ag_payoff == np.max(all_ag_payoff)).flatten())
+        return self.neighborhood[leader_idx].id if leader_idx != len(self.neighborhood) else self.id
 
     def update_strategy(self, network) -> bool:
         """
         Return True if the strategy is updated, False if not.
         """
-        leader_idx = self._get_leader_idx()
-        self.leader_id = self.neighborhood[leader_idx].id if leader_idx != len(self.neighborhood) else self.id
+        leader_id = self._get_leader_id()
+        leader_ag = self.neighborhood[leader_id]
 
         updated = False
         if self.leader_id != self.id:
-            leader_ag = self.neighborhood[leader_idx]
+            # imitate the neighbor the largest payoff
             if self.strategy != leader_ag.strategy:
-                updated = True
+                updated = updated or True
                 network.coop_num += leader_ag.strategy - self.strategy
                 self.strategy = leader_ag.strategy
+            # update neighbor
+            if self.strategy == Agent.DEFECT and draw(self.args.p):
+                updated = updated or True
+                self._update_neighborhood(network, leader_ag)
         return updated
     
-    def update_neighborhood(self, network) -> bool:
-        """
-        Return True if the neighborhood is updated, False if not.
-        """
+    def _update_neighborhood(self, network, leader_ag) -> None:
         def get_new_tie() -> int:
             a = np.random.choice(self.args.N)
             while a == self.id or Network.encode_tie(a, self.id) in network.ties:
                 a = np.random.choice(self.args.N)
             return a
 
-        updated = False
-        if self.leader_id is not None and self.leader_id != self.id:
-            if self.strategy == Agent.DEFECT and draw(self.args.p):
-                updated = True
+        # remove old tie
+        if Network.encode_tie(self.id, leader_ag.id) in network.ties:
+            self.remove_neighbor(leader_ag.id)
+            leader_ag.remove_neighbor(self.id)
+            network.ties.remove(Network.encode_tie(self.id, leader_ag.id))
 
-                # remove old tie
-                leader_ag = self.neighborhood[self.find_neighbor(self.leader_id)]
-                self.remove_neighbor(self.leader_id)
-                leader_ag.remove_neighbor(self.id)
-                network.ties.remove(Network.encode_tie(self.id, leader_ag.id))
-
-                # handle the case where two defector are the leader in each other's neighborhood
-                if leader_ag.leader_id == self.id:
-                    leader_ag.leader_id = None
-                # print("remove tie {} <-> {}".format(self.id, leader_ag.id))
-                
-                # build new tie
-                ag_b_id = get_new_tie()
-                self.neighborhood.append(network.ags[ag_b_id])
-                network.ags[ag_b_id].neighborhood.append(self)
-                network.ties.add(Network.encode_tie(self.id, ag_b_id))
-                # print("add tie {} <-> {}".format(self.id, ag_b_id))
-        return updated
+        # # handle the case where two defector are the leader in each other's neighborhood
+        # if leader_ag.leader_id == self.id:
+        #     leader_ag.leader_id = None
+        # # print("remove tie {} <-> {}".format(self.id, leader_ag.id))
+        
+        # build new tie
+        ag_b_id = get_new_tie()
+        self.neighborhood.append(network.ags[ag_b_id])
+        network.ags[ag_b_id].neighborhood.append(self)
+        network.ties.add(Network.encode_tie(self.id, ag_b_id))
+        # print("add tie {} <-> {}".format(self.id, ag_b_id))
     
     def get_string_strategy(self) -> str:
         return "C" if self.strategy == Agent.COOPERATE else "D"
